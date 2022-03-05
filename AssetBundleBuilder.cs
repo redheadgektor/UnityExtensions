@@ -363,7 +363,7 @@ namespace AssetBundlerBuilder
 
             string path = AssetDatabase.GetAssetPath(asset);
 
-            if (!path.StartsWith("assets", StringComparison.OrdinalIgnoreCase) ||
+            if (/*!path.StartsWith("assets", StringComparison.OrdinalIgnoreCase) ||*/
                 path.ToLower().Contains("editor/") ||
                 path.ToLower().Contains("/editor") ||
                 path.ToLower().Contains("/resources") ||
