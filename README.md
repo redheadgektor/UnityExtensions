@@ -42,11 +42,16 @@
 > > ```
 > FixedList.cs 
 > > The same as List, but when deleting or adding elements, the array does not change in any way
+> >
 > FixedQueue.cs 
 > > The same as Queue, but when adding to the queue or pulling out of the queue, the array does not change in any way
+> >
 > DebugEx.cs 
 > > Drawing primitive geometry using Debug.DrawLine
+> >
 > GameBuilder.cs 
 > > A simple game collector, it is possible to specify the manifest of asset bundles to exclude assets
+> >
 > AssetBundleBuilder.cs
 > > A linker of assets into bundles without explicitly labeling assets to bundles...
+> >
