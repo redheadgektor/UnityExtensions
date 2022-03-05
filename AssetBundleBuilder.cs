@@ -563,11 +563,14 @@ namespace AssetBundlerBuilder
 
                         if (!info.icon && !info.isMissing)
                         {
-                            info.icon = AssetPreview.GetMiniThumbnail(AssetDatabase.LoadMainAssetAtPath(info.path));
+                            Type type = AssetDatabase.GetMainAssetTypeAtPath(info.path);
+                            Object asset = AssetDatabase.LoadMainAssetAtPath(info.path);
 
-                            if (!info.icon)
+                            info.icon = AssetPreview.GetAssetPreview(asset);
+
+                            if (!info.icon && !AssetPreview.IsLoadingAssetPreview(asset.GetInstanceID()))
                             {
-                                info.icon = AssetPreview.GetMiniTypeThumbnail(AssetDatabase.GetMainAssetTypeAtPath(info.path));
+                                info.icon = AssetPreview.GetMiniTypeThumbnail(type);
                             }
                         }
                     }
