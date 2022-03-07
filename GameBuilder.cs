@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using UnityEditor;
+using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEditor.Compilation;
+using UnityEditor.Rendering;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
@@ -23,6 +26,7 @@ public class GameBuilderSettings
     public bool connectWithProfiler = false;
     /* DEVELOPMENT BUILD END */
 
+    public bool dedicatedServer = false;
     public bool useAssetBundleManifest = false;
     public string AssetBundleManifestPath = "";
     public bool removeCrashHandler = false;
@@ -31,7 +35,7 @@ public class GameBuilderSettings
     public bool generateDebugBat = false;
 }
 
-public class GameBuilder : EditorWindow
+public class GameBuilder : EditorWindow, IPreprocessShaders, IPreprocessComputeShaders
 {
     public static GameBuilder Instance;
 
@@ -118,6 +122,7 @@ public class GameBuilder : EditorWindow
             PlayerSettings.SetScriptingBackend(BuildTargetGroup.Standalone, ScriptingImplementation.Mono2x);
         }
 
+        settings.dedicatedServer = GUILayout.Toggle(settings.dedicatedServer, new GUIContent(DedicatedServerTitle));
         settings.useAssetBundleManifest = GUILayout.Toggle(settings.useAssetBundleManifest, new GUIContent(AssetBundleManifestTitle, AssetBundleManifestTooltip));
 
         if (settings.useAssetBundleManifest)
@@ -184,6 +189,11 @@ public class GameBuilder : EditorWindow
             }
         }
         /* DEVELOPMENT BUILD END */
+
+        if (settings.dedicatedServer)
+        {
+            options.subtarget = 1;//dedicated server
+        }
 
         if (settings.useAssetBundleManifest)
         {
@@ -298,6 +308,7 @@ public class GameBuilder : EditorWindow
         }
     }
 
+    const string DedicatedServerTitle = "Dedicated Server";
     const string AssetBundleManifestTitle = "Use Asset Bundle Manifest";
     const string AssetBundleManifestTooltip = "In build will not include files related to bundles that are specified in the manifest";
 
@@ -319,6 +330,8 @@ public class GameBuilder : EditorWindow
     /* SETTINGS SAVE/LOAD */
     public const string GameBuilderSettingsFileHeader = "GameBuilderSettings";
     public const string GameBuilderSettingsFile = "GameBuilderSettings.bin";
+
+    int IOrderedCallback.callbackOrder => 0;
 
     private static void Load(GameBuilderSettings settings)
     {
@@ -346,6 +359,7 @@ public class GameBuilder : EditorWindow
                             settings.connectWithProfiler = br.ReadBoolean();
                             /* DEVELOPMENT BUILD END */
 
+                            settings.dedicatedServer = br.ReadBoolean();
                             settings.useAssetBundleManifest = br.ReadBoolean();
                             settings.AssetBundleManifestPath = br.ReadString();
                             settings.removeCrashHandler = br.ReadBoolean();
@@ -392,6 +406,7 @@ public class GameBuilder : EditorWindow
                 bw.Write(settings.connectWithProfiler);
                 /* DEVELOPMENT BUILD END */
 
+                bw.Write(settings.dedicatedServer);
                 bw.Write(settings.useAssetBundleManifest);
                 bw.Write(settings.AssetBundleManifestPath);
                 bw.Write(settings.removeCrashHandler);
@@ -421,5 +436,21 @@ public class GameBuilder : EditorWindow
         }
 
         Directory.Delete(target_dir, false);
+    }
+
+    void IPreprocessShaders.OnProcessShader(Shader shader, ShaderSnippetData snippet, IList<ShaderCompilerData> data)
+    {
+        if (settings.dedicatedServer)
+        {
+            data.Clear();
+        }
+    }
+
+    void IPreprocessComputeShaders.OnProcessComputeShader(ComputeShader shader, string kernelName, IList<ShaderCompilerData> data)
+    {
+        if (settings.dedicatedServer)
+        {
+            data.Clear();
+        }
     }
 }
