@@ -267,8 +267,8 @@ public class GameBuilder : EditorWindow, IPreprocessShaders, IPreprocessComputeS
 
     public static void StartBuild(GameBuilderSettings settings)
     {
-        Instance.NativeConsole.Initialize();
-        Instance.NativeConsole.SetTitle("Building log...");
+        //Instance.NativeConsole.Initialize();
+        //Instance.NativeConsole.SetTitle("Building log...");
         BuildPlayerOptions options = new BuildPlayerOptions();
         options.locationPathName = settings.buildPath;
         options.target = settings.buildTarget;
@@ -413,7 +413,7 @@ public class GameBuilder : EditorWindow, IPreprocessShaders, IPreprocessComputeS
         {
             EditorUtility.DisplayDialog("Building error!", "Error on building... See in console", "Close");
         }
-        Instance.NativeConsole.Shutdown();
+        //Instance.NativeConsole.Shutdown();
     }
 
     const string DontIncludeShadersTitle = "Dont Include Shaders";
