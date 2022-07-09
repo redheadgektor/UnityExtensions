@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using UnityEditor;
 using UnityEditor.Build;
+using UnityEditor.Build.Pipeline;
 using UnityEditor.Build.Reporting;
 using UnityEditor.Compilation;
 using UnityEditor.Rendering;
@@ -26,20 +28,98 @@ public class GameBuilderSettings
     public bool connectWithProfiler = false;
     /* DEVELOPMENT BUILD END */
 
-    public bool dedicatedServer = false;
+    public bool dontInclideShaders = false;
     public bool useAssetBundleManifest = false;
     public string AssetBundleManifestPath = "";
     public bool removeCrashHandler = false;
     public bool compile2cpp = false;
     public bool generateBatchmodeBat = false;
+    public string batchmodeBat = "-batchmode -nographics -logFile engine.log"; 
     public bool generateDebugBat = false;
+    public string debugBat = "-logFile engine.log";
+
+    /* SCENES */
+    public List<string> scenes = new List<string>();
 }
 
 public class GameBuilder : EditorWindow, IPreprocessShaders, IPreprocessComputeShaders
 {
+    public class EditorNativeConsole
+    {
+        private IntPtr m_ForegroundWindow;
+        private bool m_RestoreFocus = false;
+
+        public void Initialize()
+        {
+            if (!AttachConsole(0xffffffff))
+            {
+                if (m_RestoreFocus)
+                {
+                    m_ForegroundWindow = GetForegroundWindow();
+                }
+                AllocConsole();
+            }
+
+            ShowWindow(m_ForegroundWindow, 9);
+
+            try
+            {
+                StreamWriter standardOutput = new StreamWriter(System.Console.OpenStandardOutput(1024));
+                standardOutput.AutoFlush = true;
+                System.Console.SetOut(standardOutput);
+            }
+            catch (Exception e)
+            {
+                Debug.Log("Couldn't redirect output: " + e.Message);
+            }
+        }
+
+        public void Shutdown()
+        {
+            FreeConsole();
+        }
+
+        public void Print(string message)
+        {
+            System.Console.WriteLine(message);
+        }
+
+        public void SetTitle(string strName)
+        {
+            SetConsoleTitle(strName);
+        }
+
+        private const int STD_OUTPUT_HANDLE = -11;
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool AttachConsole(uint dwProcessId);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool AllocConsole();
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool FreeConsole();
+
+        [DllImport("kernel32.dll", EntryPoint = "GetStdHandle", SetLastError = true, CharSet = CharSet.Auto, CallingConvention = CallingConvention.StdCall)]
+        private static extern IntPtr GetStdHandle(int nStdHandle);
+
+        [DllImport("kernel32.dll")]
+        static extern bool SetConsoleTitle(string lpConsoleTitle);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    }
+
     public static GameBuilder Instance;
 
     public GameBuilderSettings settings = new GameBuilderSettings();
+    EditorNativeConsole NativeConsole = new EditorNativeConsole();
 
     [MenuItem("Game/Build", priority = 2056)]
     static void ShowWindow()
@@ -122,7 +202,7 @@ public class GameBuilder : EditorWindow, IPreprocessShaders, IPreprocessComputeS
             PlayerSettings.SetScriptingBackend(BuildTargetGroup.Standalone, ScriptingImplementation.Mono2x);
         }
 
-        settings.dedicatedServer = GUILayout.Toggle(settings.dedicatedServer, new GUIContent(DedicatedServerTitle));
+        settings.dontInclideShaders = GUILayout.Toggle(settings.dontInclideShaders, new GUIContent(DontIncludeShadersTitle));
         settings.useAssetBundleManifest = GUILayout.Toggle(settings.useAssetBundleManifest, new GUIContent(AssetBundleManifestTitle, AssetBundleManifestTooltip));
 
         if (settings.useAssetBundleManifest)
@@ -137,7 +217,33 @@ public class GameBuilder : EditorWindow, IPreprocessShaders, IPreprocessComputeS
         }
 
         settings.generateBatchmodeBat = GUILayout.Toggle(settings.generateBatchmodeBat, "Generate bat for run in batchmode");
+        if (settings.generateBatchmodeBat) { settings.batchmodeBat = GUILayout.TextField(settings.batchmodeBat); }
         settings.generateDebugBat = GUILayout.Toggle(settings.generateDebugBat, "Generate bat for run debug");
+        if (settings.generateDebugBat) { settings.debugBat = GUILayout.TextField(settings.debugBat); }
+
+        GUILayout.BeginVertical("box");
+        GUILayout.Label("Scenes");
+        for(int i = 0; i < settings.scenes.Count; i++)
+        {
+            GUILayout.BeginHorizontal("box");
+            settings.scenes[i] = EditorGUILayout.TextField(settings.scenes[i]);
+            if (GUILayout.Button("X")) { settings.scenes.RemoveAt(i); }
+            GUILayout.EndHorizontal();
+        }
+        if(GUILayout.Button("Find scenes"))
+        {
+            string[] guids = AssetDatabase.FindAssets("t:SceneAsset");
+
+            for(int j = 0; j < guids.Length; j++)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guids[j]);
+                if (!settings.scenes.Contains(path) && path.StartsWith("assets", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.scenes.Add(path);
+                }
+            }
+        }
+        GUILayout.EndVertical();
 
         GUILayout.EndVertical();
 
@@ -161,6 +267,8 @@ public class GameBuilder : EditorWindow, IPreprocessShaders, IPreprocessComputeS
 
     public static void StartBuild(GameBuilderSettings settings)
     {
+        Instance.NativeConsole.Initialize();
+        Instance.NativeConsole.SetTitle("Building log...");
         BuildPlayerOptions options = new BuildPlayerOptions();
         options.locationPathName = settings.buildPath;
         options.target = settings.buildTarget;
@@ -190,9 +298,9 @@ public class GameBuilder : EditorWindow, IPreprocessShaders, IPreprocessComputeS
         }
         /* DEVELOPMENT BUILD END */
 
-        if (settings.dedicatedServer)
+        if (settings.dontInclideShaders)
         {
-            options.subtarget = 1;//dedicated server
+
         }
 
         if (settings.useAssetBundleManifest)
@@ -200,11 +308,10 @@ public class GameBuilder : EditorWindow, IPreprocessShaders, IPreprocessComputeS
             options.assetBundleManifestPath = settings.AssetBundleManifestPath;
         }
 
-        options.scenes = new string[] { EditorBuildSettings.scenes[0].path };
+        options.scenes = settings.scenes.ToArray();
 
         DateTime time = DateTime.Now;
         PlayerSettings.bundleVersion = "build_" + time.Day + "" + time.Month + "" + time.Year + "" + time.Hour;
-
         BuildReport report = BuildPipeline.BuildPlayer(options);
 
         /* BUILD SUCCESS */
@@ -237,14 +344,14 @@ public class GameBuilder : EditorWindow, IPreprocessShaders, IPreprocessComputeS
 
             if (settings.generateBatchmodeBat)
             {
-                string commandline1 = "@echo off\necho Starting engine...\nstart " + settings.buildName + ".exe -batchmode -nographics -logFile engine.log";
+                string commandline1 = "@echo off\necho Starting engine...\nstart " + settings.buildName + ".exe "+settings.batchmodeBat;
                 File.WriteAllText(settings.buildDir + "/batchmode.bat", commandline1);
 
-                string commandline2 = "@echo off\necho Starting engine...\nstart " + settings.buildName + ".exe -logFile engine.log";
+                string commandline2 = "@echo off\necho Starting engine...\nstart " + settings.buildName + ".exe "+settings.debugBat;
                 File.WriteAllText(settings.buildDir + "/debug.bat", commandline2);
             }
 
-            BuildFile[] files = report.files;
+            BuildFile[] files = report.GetFiles();
             PackedAssets[] assets = report.packedAssets;
             int total_size = (int)report.summary.totalSize;
             TimeSpan build_time = report.summary.totalTime;
@@ -274,7 +381,7 @@ public class GameBuilder : EditorWindow, IPreprocessShaders, IPreprocessComputeS
                 {
                     PackedAssets _f = assets[i];
 
-                    sw.WriteLine("======= " + _f.shortPath + " =======  (Files " + _f.contents.Length + ")");
+                    sw.WriteLine("======= " + _f.shortPath + " =======  (Files " + _f.contents.Length + ") (Size "+_f.overhead+" kb)");
                     for (int j = 0; j < _f.contents.Length; j++)
                     {
                         sw.WriteLine("  - [" + _f.contents[j].type.Name + "]  " + _f.contents[j].sourceAssetPath + "  [" + _f.contents[j].packedSize + " kb]");
@@ -306,9 +413,10 @@ public class GameBuilder : EditorWindow, IPreprocessShaders, IPreprocessComputeS
         {
             EditorUtility.DisplayDialog("Building error!", "Error on building... See in console", "Close");
         }
+        Instance.NativeConsole.Shutdown();
     }
 
-    const string DedicatedServerTitle = "Dedicated Server";
+    const string DontIncludeShadersTitle = "Dont Include Shaders";
     const string AssetBundleManifestTitle = "Use Asset Bundle Manifest";
     const string AssetBundleManifestTooltip = "In build will not include files related to bundles that are specified in the manifest";
 
@@ -359,13 +467,21 @@ public class GameBuilder : EditorWindow, IPreprocessShaders, IPreprocessComputeS
                             settings.connectWithProfiler = br.ReadBoolean();
                             /* DEVELOPMENT BUILD END */
 
-                            settings.dedicatedServer = br.ReadBoolean();
+                            settings.dontInclideShaders = br.ReadBoolean();
                             settings.useAssetBundleManifest = br.ReadBoolean();
                             settings.AssetBundleManifestPath = br.ReadString();
                             settings.removeCrashHandler = br.ReadBoolean();
                             settings.compile2cpp = br.ReadBoolean();
                             settings.generateBatchmodeBat = br.ReadBoolean();
+                            settings.batchmodeBat = br.ReadString();
                             settings.generateDebugBat = br.ReadBoolean();
+                            settings.debugBat = br.ReadString();
+
+                            int scenes = br.ReadInt32();
+                            for (int i = 0; i < scenes; i++)
+                            {
+                                settings.scenes.Add(br.ReadString());
+                            }
                         }
                         else
                         {
@@ -406,13 +522,21 @@ public class GameBuilder : EditorWindow, IPreprocessShaders, IPreprocessComputeS
                 bw.Write(settings.connectWithProfiler);
                 /* DEVELOPMENT BUILD END */
 
-                bw.Write(settings.dedicatedServer);
+                bw.Write(settings.dontInclideShaders);
                 bw.Write(settings.useAssetBundleManifest);
                 bw.Write(settings.AssetBundleManifestPath);
                 bw.Write(settings.removeCrashHandler);
                 bw.Write(settings.compile2cpp);
                 bw.Write(settings.generateBatchmodeBat);
+                bw.Write(settings.batchmodeBat);
                 bw.Write(settings.generateDebugBat);
+                bw.Write(settings.debugBat);
+
+                bw.Write(settings.scenes.Count);
+                for(int i = 0; i < settings.scenes.Count; i++)
+                {
+                    bw.Write(settings.scenes[i]);
+                }
             }
             fs.Close();
         }
@@ -440,7 +564,8 @@ public class GameBuilder : EditorWindow, IPreprocessShaders, IPreprocessComputeS
 
     void IPreprocessShaders.OnProcessShader(Shader shader, ShaderSnippetData snippet, IList<ShaderCompilerData> data)
     {
-        if (settings.dedicatedServer)
+        NativeConsole.Print($"[ComputeShader] Shader: {shader.name} Pass: {snippet.passName} Type: {snippet.shaderType}");
+        if (settings.dontInclideShaders)
         {
             data.Clear();
         }
@@ -448,7 +573,8 @@ public class GameBuilder : EditorWindow, IPreprocessShaders, IPreprocessComputeS
 
     void IPreprocessComputeShaders.OnProcessComputeShader(ComputeShader shader, string kernelName, IList<ShaderCompilerData> data)
     {
-        if (settings.dedicatedServer)
+        NativeConsole.Print($"[ComputeShader] Kernel: {kernelName} Shader: {shader.name}");
+        if (settings.dontInclideShaders)
         {
             data.Clear();
         }
