@@ -51,6 +51,7 @@
 > >
 > GameBuilder.cs 
 > > A simple game collector, it is possible to specify the manifest of asset bundles to exclude assets
+![](https://github.com/redheadgektor/UnityExtensions/blob/main/gamebuilder_demo.gif)
 > >
 > AssetBundleBuilder.cs
 > > A linker of assets into bundles without explicitly labeling assets to bundles...
